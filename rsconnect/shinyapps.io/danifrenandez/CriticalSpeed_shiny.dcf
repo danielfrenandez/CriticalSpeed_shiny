@@ -5,7 +5,7 @@ account: danifrenandez
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15802131
-bundleId: 11056139
+bundleId: 11056181
 url: https://danifrenandez.shinyapps.io/CriticalSpeed_shiny/
 version: 1
 asMultiple: FALSE

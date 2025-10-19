@@ -149,9 +149,16 @@ server <- function(input, output) {
       mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
     
     ggplot(df_preds, aes(x = time_window, y = speed)) +
-      geom_line(aes(y = speed)) + 
-      geom_line(data = df_hist_maximums_session, aes(y = speed), size = 1) +
-      scale_color_viridis(discrete = TRUE)
+      geom_line(aes(y = speed), size = 1) + 
+      geom_line(data = df_hist_maximums_session, aes(y = speed)) +
+      scale_color_viridis(discrete = TRUE) +
+      scale_colour_viridis_d(na.translate = F) +
+      scale_x_log10() +
+      theme_ipsum() +
+      labs(
+        x = "Time (seconds)",
+        y = "Speed (km/h)"
+      )
   })
 }
 
