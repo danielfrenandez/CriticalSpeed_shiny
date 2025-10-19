@@ -35,7 +35,8 @@ ui <- fluidPage(
           "last 3 months" = "last_3_months",
           "last 6 months" = "last_6_months",
           "all data" = "all_data",
-          "personalized range" = "personalized")
+          "personalized range" = "personalized"),
+        selected = "all_data"
       ),
       conditionalPanel(
         condition = "input.select == 'personalized'",
