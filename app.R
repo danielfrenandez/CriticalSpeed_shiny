@@ -182,9 +182,38 @@ server <- function(input, output, session) {
     label_angle <- ifelse(width_px < 600, 60, 0)
     n_dodge_val <- ifelse(width_px < 600, 2, 1)
     
+    # Defineix les zones (temps en segons)
+    zones <- tibble::tibble(
+      xmin = c(1, 7, 9, 21, 60, 481),      # 1 s, 7 s, 9 s, 21 s, 60 s, 9 min (540 s)
+      xmax = c(6.999, 8.999, 20.999, 60.999, 480.999, 7200.999),   # 6 s, 8 s, 20 s, 60 s, 8 min (480 s), 120 min (7200 s)
+      zone = c(
+        "AnaAla-P",  # Anaerobic alactic potencia
+        "AnaAla-C",  # Anaerobic alactic capacitat
+        "AnaLa-P",  # Anaerobic lactic potencia
+        "AnaLa-C",  # Anaerobic lactic capacitat
+        "VO2max-P", # Aerobic VO2max potencia
+        "Aerobic-C" # Aerobic capacitat
+      ),
+      fill_color = c(
+        "#FF9999", "#FFCCCC", "#FFCC66", "#FFEE99", "#99CCFF", "#66AAFF"
+      )
+    ) %>%
+      arrange(xmin) %>%                       # ordena segons xmin
+      mutate(zone = factor(zone, levels = zone))  # converteix a factor ordenat
+    
+    # Al renderPlot(), abans dels geom_line(), afegeix les zones:
     ggplot(df_preds, aes(x = time_window, y = speed)) +
+      # 1️⃣ Zones de fons
+      geom_rect(
+        data = zones,
+        aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, fill = zone),
+        inherit.aes = FALSE,
+        alpha = 0.2
+      ) +
+      # 2️⃣ Línies de dades
       geom_line(aes(y = speed), size = 1) +
-      geom_line(data = df_hist_maximums_session, aes(y = speed)) +
+      geom_line(data = df_hist_maximums_session, aes(y = speed), size = 1) +
+      # 3️⃣ Escala X logarítmica i etiquetes
       scale_x_log10(
         breaks = c(1, 10, 30, 60, 120, 300, 600, 1200, 3600),
         labels = function(x) {
@@ -193,12 +222,21 @@ server <- function(input, output, session) {
           })
         }
       ) +
-      theme(
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
-      ) +
+      # 4️⃣ Escala de colors per les zones
+      scale_fill_manual(values = setNames(zones$fill_color, zones$zone)) +
       theme_ipsum() +
-      theme(axis.text.x = element_text(angle = label_angle, hjust = 1)) +
-      labs(x = "Time (seconds/minutes)", y = "Speed (km/h)")
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "right",
+        legend.title = element_text(size = 10),
+        legend.key.width = unit(2, "lines")
+      ) +
+      #guides(fill = guide_legend(nrow = 1)) +  # una sola fila
+      labs(
+        x = "Time (seconds/minutes)",
+        y = "Speed (km/h)",
+        fill = "Zone"
+      )
   })
   
   output$summary_table <- renderTable({
