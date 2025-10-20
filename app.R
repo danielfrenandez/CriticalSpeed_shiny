@@ -203,17 +203,17 @@ server <- function(input, output, session) {
     
     # Al renderPlot(), abans dels geom_line(), afegeix les zones:
     ggplot(df_preds, aes(x = time_window, y = speed)) +
-      # 1️⃣ Zones de fons
+      # Zones de fons
       geom_rect(
         data = zones,
         aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, fill = zone),
         inherit.aes = FALSE,
         alpha = 0.2
       ) +
-      # 2️⃣ Línies de dades
-      geom_line(aes(y = speed), size = 1) +
+      # Línies de dades
+      geom_line(aes(y = speed), size = 0.5) +
       geom_line(data = df_hist_maximums_session, aes(y = speed), size = 1) +
-      # 3️⃣ Escala X logarítmica i etiquetes
+      # Escala X logarítmica i etiquetes
       scale_x_log10(
         breaks = c(1, 10, 30, 60, 120, 300, 600, 1200, 3600),
         labels = function(x) {
@@ -222,7 +222,7 @@ server <- function(input, output, session) {
           })
         }
       ) +
-      # 4️⃣ Escala de colors per les zones
+      # Escala de colors per les zones
       scale_fill_manual(values = setNames(zones$fill_color, zones$zone)) +
       theme_ipsum() +
       theme(
@@ -231,7 +231,6 @@ server <- function(input, output, session) {
         legend.title = element_text(size = 10),
         legend.key.width = unit(2, "lines")
       ) +
-      #guides(fill = guide_legend(nrow = 1)) +  # una sola fila
       labs(
         x = "Time (seconds/minutes)",
         y = "Speed (km/h)",
