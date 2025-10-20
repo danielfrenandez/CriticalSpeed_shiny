@@ -17,7 +17,6 @@ library(purrr)
 library(viridis)
 library(stringr)
 
-
 load("output/database_maximums_var.Rdata")
 df_final_maximums$date <- as.Date(df_final_maximums$date)
 #df_final_maximums <- df_final_maximums %>%
