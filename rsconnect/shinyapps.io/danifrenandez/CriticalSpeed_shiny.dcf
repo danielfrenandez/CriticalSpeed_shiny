@@ -5,8 +5,9 @@ account: danifrenandez
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15802131
-bundleId: 11056181
+bundleId: 11062092
 url: https://danifrenandez.shinyapps.io/CriticalSpeed_shiny/
 version: 1
 asMultiple: FALSE
 asStatic: FALSE
+ignoredFiles: .RData|output/database_maximums_var.Rdata|output/df_hist_maximums.Rdata|README.md
