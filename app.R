@@ -49,26 +49,54 @@ ui <- fluidPage(
         )
       ),
       selectInput( 
-        "training", 
-        "Select session", 
-        choices = unique(df_final_maximums$date)
-      ),
-      selectInput( 
         "athlete", 
         "Select Athlete:", 
         choices = unique(df_final_maximums$player_name)
+      ),
+      selectInput( 
+        "training", 
+        "Select session", 
+        choices = NULL
       ),
       width = 3
     ),
     mainPanel(
       navset_tab(
-        nav_panel("General", plotOutput("plot"))
+        nav_panel("General",
+                  div(
+                    style = "text-align:center;",
+                    plotOutput("plot", width = "100%"),
+                    br(),
+                    h4("% respect most intense periods selected"),
+                    div(
+                      style = "display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;",tableOutput("summary_table"))
+          )
+        )
       )
     )
   )
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
+  
+  # Quan canvia l'athlete, actualitza les sessions disponibles
+  observeEvent(input$athlete, {
+    available_sessions <- df_final_maximums %>%
+      dplyr::filter(player_name == input$athlete) %>%
+      dplyr::pull(date) %>%
+      unique() %>%
+      sort()
+    
+    updateSelectInput(
+      session,
+      inputId = "training",
+      choices = available_sessions,
+      selected = tail(available_sessions, 1)
+    )
+  })
   
   output$plot <- renderPlot({
     
@@ -148,16 +176,96 @@ server <- function(input, output) {
       pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
       mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
     
+    width_px <- session$clientData$output_plot_width
+    
+    # defineix angle segons amplada
+    label_angle <- ifelse(width_px < 600, 60, 0)
+    n_dodge_val <- ifelse(width_px < 600, 2, 1)
+    
     ggplot(df_preds, aes(x = time_window, y = speed)) +
-      geom_line(aes(y = speed), size = 1) + 
+      geom_line(aes(y = speed), size = 1) +
       geom_line(data = df_hist_maximums_session, aes(y = speed)) +
-      scale_color_viridis(discrete = TRUE) +
-      scale_colour_viridis_d(na.translate = F) +
-      scale_x_log10() +
+      scale_x_log10(
+        breaks = c(1, 10, 30, 60, 120, 300, 600, 1200, 3600),
+        labels = function(x) {
+          sapply(x, function(val) {
+            if (val < 60) paste0(val, " s") else paste0(round(val / 60, 1), " min")
+          })
+        }
+      ) +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+      ) +
       theme_ipsum() +
-      labs(
-        x = "Time (seconds)",
-        y = "Speed (km/h)"
+      theme(axis.text.x = element_text(angle = label_angle, hjust = 1)) +
+      labs(x = "Time (seconds/minutes)", y = "Speed (km/h)")
+  })
+  
+  output$summary_table <- renderTable({
+    req(input$athlete, input$training)
+    
+    # Defineix el mateix rang temporal que al gràfic
+    max_date <- max(df_final_maximums$date)
+    min_date <- min(df_final_maximums$date)
+    
+    selected_range <- switch(
+      input$select,
+      "last_month" = c(max_date - 30, max_date),
+      "last_3_months" = c(max_date - 90, max_date),
+      "last_6_months" = c(max_date - 180, max_date),
+      "all_data" = c(min_date, max_date),
+      "personalized" = input$slider
+    )
+    
+    # Filtra dins el rang de dates
+    df_hist_maximums <- df_final_maximums %>%
+      filter(MM_3 < 39) %>% # elimina sessions estranyes
+      filter(date >= selected_range[[1]] & date <= selected_range[[2]]) %>%
+      filter(player_name == input$athlete)
+    
+    # Calcula el màxim per finestra dins del rang
+    df_hist_maximums <- df_hist_maximums %>%
+      group_by(player_name) %>%
+      summarise(across(starts_with("MM_"), ~{
+        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
+      })) %>%
+      pivot_longer(!player_name, names_to = "code_window", values_to = "max_speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
+    # Sessió seleccionada
+    df_session <- df_final_maximums %>%
+      filter(MM_3 < 39) %>%
+      filter(player_name == input$athlete, date == input$training) %>%
+      group_by(player_name) %>%
+      summarise(across(starts_with("MM_"), ~{
+        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
+      })) %>%
+      pivot_longer(!player_name, names_to = "code_window", values_to = "session_speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
+    # Combina i calcula el %
+    df_compare <- df_hist_maximums %>%
+      left_join(df_session, by = c("player_name", "code_window", "time_window")) %>%
+      mutate(percent_of_max = round((session_speed / max_speed) * 100, 1)) %>%
+      select(time_window, session_speed, max_speed, percent_of_max)
+    
+    # Filtra només les finestres desitjades
+    desired_windows <- c(1, 10, 30, 60, 120, 300, 600, 1200, 3600)
+    df_compare <- df_compare %>% filter(time_window %in% desired_windows)
+    
+    # Format final
+    df_compare %>%
+      arrange(time_window) %>%
+      mutate(
+        time_window = ifelse(time_window < 60,
+                             paste0(time_window, " s"),
+                             paste0(round(time_window / 60, 1), " min"))
+      ) %>%
+      rename(
+        "Time window" = time_window,
+        "Session speed (km/h)" = session_speed,
+        "Max (filtered range, km/h)" = max_speed,
+        "% of max" = percent_of_max
       )
   })
 }
