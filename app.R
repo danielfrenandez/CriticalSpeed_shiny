@@ -211,8 +211,8 @@ server <- function(input, output, session) {
         alpha = 0.2
       ) +
       # Línies de dades
-      geom_line(aes(y = speed), size = 0.5) +
-      geom_line(data = df_hist_maximums_session, aes(y = speed), size = 1) +
+      geom_line(aes(y = speed), size = 1) +
+      geom_line(data = df_hist_maximums_session, aes(y = speed), size = 0.5) +
       # Escala X logarítmica i etiquetes
       scale_x_log10(
         breaks = c(1, 10, 30, 60, 120, 300, 600, 1200, 3600),
