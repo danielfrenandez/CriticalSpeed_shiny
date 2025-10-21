@@ -53,26 +53,36 @@ ui <- fluidPage(
         "Select Athlete:", 
         choices = unique(df_final_maximums$player_name)
       ),
-      selectInput( 
-        "training", 
-        "Select session", 
-        choices = NULL
+      conditionalPanel(
+        condition = "input.tabs_main == 'MIPs vs. session'",
+        selectInput( 
+          "training", 
+          "Select session", 
+          choices = NULL
+        )
       ),
       width = 3
     ),
     mainPanel(
       navset_tab(
-        nav_panel("General",
-                  div(
-                    style = "text-align:center;",
-                    plotOutput("plot", width = "100%"),
-                    br(),
-                    h4("% respect most intense periods selected"),
-                    div(
-                      style = "display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;",tableOutput("summary_table"))
+        id = "tabs_main",
+        nav_panel("MIPs vs. team",
+                  div(style = "text-align:center;",
+                    plotOutput("plot_mipsteam", width = "100%"),
+                    br())
+                  ),
+        nav_panel("MIPs vs. session",
+                  div(style = "text-align:center;",
+                      plotOutput("plot", width = "100%"),
+                      br(),
+                      h4("% respect most intense periods selected"),
+                      div(
+                        style = "display: flex;
+                      justify-content: center;
+                      align-items: center;
+                      width: 100%;",
+                        tableOutput("summary_table")
+            )
           )
         )
       )
@@ -96,6 +106,109 @@ server <- function(input, output, session) {
       choices = available_sessions,
       selected = tail(available_sessions, 1)
     )
+  })
+  
+  output$plot_mipsteam <- renderPlot({
+    
+    max_date <- max(df_final_maximums$date)
+    min_date <- min(df_final_maximums$date)
+    
+    selected_range <- switch(
+      input$select,
+      "last_month" = c(max_date - 30, max_date),
+      "last_3_months" = c(max_date - 90, max_date),
+      "last_6_months" = c(max_date - 180, max_date),
+      "all_data" = c(min_date, max_date),
+      "personalized" = input$slider
+    )
+    
+    df_hist_maximums <- df_final_maximums %>%
+      filter(MM_3 < 39) %>% #there is 14 sessions where GPS was in a car LOL
+      filter(date >= selected_range[[1]] & date <= selected_range[[2]]) %>%
+      filter(if_all(MM_1:MM_1250, ~ !is.na(.)))
+    
+    df_hist_maximums <- df_hist_maximums %>%
+      group_by(player_name) %>%
+      summarise(across(starts_with("MM_"), ~{
+        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
+      }))  %>%
+      pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
+    df_hist_maximums_indv <- df_final_maximums %>%
+      filter(MM_3 < 39) %>% #there is 14 sessions where GPS was in a car LOL
+      filter(date >= selected_range[[1]] & date <= selected_range[[2]]) %>%
+      filter(player_name == input$athlete)
+    
+    df_hist_maximums_indv <- df_hist_maximums_indv %>%
+      group_by(player_name) %>%
+      summarise(across(starts_with("MM_"), ~{
+        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
+      }))  %>%
+      pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
+    width_px <- session$clientData$output_plot_width
+    
+    # defineix angle segons amplada
+    label_angle <- ifelse(width_px < 600, 60, 0)
+    n_dodge_val <- ifelse(width_px < 600, 2, 1)
+    
+    # Defineix les zones (temps en segons)
+    zones <- tibble::tibble(
+      xmin = c(1, 7, 9, 21, 60, 481),      # 1 s, 7 s, 9 s, 21 s, 60 s, 9 min (540 s)
+      xmax = c(6.999, 8.999, 20.999, 60.999, 480.999, 7200.999),   # 6 s, 8 s, 20 s, 60 s, 8 min (480 s), 120 min (7200 s)
+      zone = c(
+        "AnaAla-P",  # Anaerobic alactic potencia
+        "AnaAla-C",  # Anaerobic alactic capacitat
+        "AnaLa-P",  # Anaerobic lactic potencia
+        "AnaLa-C",  # Anaerobic lactic capacitat
+        "VO2max-P", # Aerobic VO2max potencia
+        "Aerobic-C" # Aerobic capacitat
+      ),
+      fill_color = c(
+        "#FF9999", "#FFCCCC", "#FFCC66", "#FFEE99", "#99CCFF", "#66AAFF"
+      )
+    ) %>%
+      arrange(xmin) %>%                       # ordena segons xmin
+      mutate(zone = factor(zone, levels = zone))  # converteix a factor ordenat
+    
+    # Al renderPlot(), abans dels geom_line(), afegeix les zones:
+    ggplot(df_hist_maximums, aes(x = time_window, y = speed, group = player_name)) +
+      # Zones de fons
+      geom_rect(
+        data = zones,
+        mapping = aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, fill = zone),
+        inherit.aes = FALSE,
+        alpha = 0.2
+      ) +
+      # Línies de dades
+      geom_line(color = "black", size = 1, alpha = 0.2, na.rm = TRUE) +
+      geom_line(data = df_hist_maximums_indv, aes(y = speed), color = "orange", size = 1.5) +
+      # Escala X logarítmica i etiquetes
+      scale_x_log10(
+        breaks = c(1, 10, 30, 60, 120, 300, 600, 1200, 3600),
+        labels = function(x) {
+          sapply(x, function(val) {
+            if (val < 60) paste0(val, " s") else paste0(round(val / 60, 1), " min")
+          })
+        }
+      ) +
+      # Escala de colors per les zones
+      scale_fill_manual(values = setNames(zones$fill_color, zones$zone)) +
+      theme_ipsum() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "right",
+        legend.title = element_text(size = 10),
+        legend.key.width = unit(2, "lines")
+      ) +
+      labs(
+        x = "Time (seconds/minutes)",
+        y = "Speed (km/h)",
+        fill = "Zone"
+      )
+    
   })
   
   output$plot <- renderPlot({
