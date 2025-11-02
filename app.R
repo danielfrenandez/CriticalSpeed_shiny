@@ -17,11 +17,14 @@ library(tidyr)
 library(purrr)
 library(viridis)
 library(stringr)
+library(RcppRoll)
 
 load("output/database_maximums_var.Rdata")
 df_final_maximums$date <- as.Date(df_final_maximums$date)
 #df_final_maximums <- df_final_maximums %>%
   #mutate(player_short = substr(as.character(player_name), 1, 9))  # primeres 8 lletres
+
+options(shiny.maxRequestSize = 1024 * 1024^2)
 
 ###Define UI
 ui <- fluidPage(
@@ -61,6 +64,10 @@ ui <- fluidPage(
           choices = NULL
         )
       ),
+      conditionalPanel(
+        condition = "input.tabs_main == 'Session analysis'",
+        fileInput("file1", "Choose a File")
+      ),
       width = 3
     ),
     mainPanel(
@@ -84,6 +91,11 @@ ui <- fluidPage(
                         tableOutput("summary_table")
             )
           )
+        ),
+        nav_panel("Session analysis",
+                  div(style = "text-align:center;",
+                      plotOutput("plot_session", width = "100%"),
+                      br())
         )
       )
     )
@@ -418,6 +430,161 @@ server <- function(input, output, session) {
         "% of max" = percent_of_max
       )
   })
+  
+  output$plot_session <- renderPlot({
+    
+    name <- input$file1$name
+    file1 <- readRDS(input$file1$datapath)
+    
+    # --- Extraiem la data del path ---
+    data <- sub("^([0-9]{4}-[0-9]{2}-[0-9]{2}).*$", "\\1", name)
+    date_session <- as.Date(data)
+    
+    file1 <- file1 %>%
+      distinct(time, .keep_all = TRUE) %>%
+      arrange(time) %>%
+      mutate(speed_kmh = speed * 3.6)
+    
+    if (nrow(file1) < 10) return(NULL)
+    
+    # --- Definim les finestres (en segons) ---
+    window_seconds <- c(
+      seq(1, 120, by = 4),     # cada 4s fins 2 min
+      seq(125, 600, by = 60),  # cada 30s fins 10 min
+      seq(630, 900, by = 120)  # cada 1min fins 1h
+    )
+    
+    # --- Vector i suma acumulada ---
+    v <- file1$speed_kmh
+    S <- c(0, cumsum(v))
+    n <- length(v)
+    
+    # --- Calculem TOTS els valors per a cada finestra ---
+    all_windows <- lapply(window_seconds, function(w) {
+      win <- w * 20
+      if (win >= n) return(NULL)
+      
+      means <- RcppRoll::roll_mean(v, n = win, align = "right")
+      
+      tibble(
+        window_seconds = w,
+        timestamp = file1$time[win:n],
+        mean_speed = means[win:n]
+      )
+    })
+    
+    # --- Combina totes les finestres en una sola taula ---
+    result_long <- bind_rows(all_windows)
+    
+    player_name_file <- if ("player_name" %in% names(file1)) file1$player_name[1] else NA
+    
+    # --- Afegim informació addicional ---
+    result_long <- result_long %>%
+      mutate(
+        date = date_session,
+        player_name = player_name_file
+      ) %>%
+      select(date, player_name, window_seconds, timestamp, mean_speed)
+    
+    max_date <- max(df_final_maximums$date)
+    min_date <- min(df_final_maximums$date)
+    
+    selected_range <- switch(
+      input$select,
+      "last_month" = c(date_session - 30, date_session),
+      "last_3_months" = c(date_session - 90, date_session),
+      "last_6_months" = c(date_session - 180, date_session),
+      "all_data" = c(min_date, date_session),
+      "personalized" = input$slider
+    )
+    
+    df_hist_maximums_indv <- df_final_maximums %>%
+      filter(MM_3 < 39) %>% #there is 14 sessions where GPS was in a car LOL
+      filter(date >= selected_range[[1]] & date <= selected_range[[2]]) %>%
+      filter(player_name == player_name_file)
+    
+    df_hist_maximums_indv <- df_hist_maximums_indv %>%
+      group_by(player_name) %>%
+      summarise(across(starts_with("MM_"), ~{
+        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
+      }))  %>%
+      pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
+    # Assegurem que les finestres tinguin el mateix nom
+    df_hist_maximums_indv <- df_hist_maximums_indv %>%
+      mutate(time_window = as.numeric(time_window))
+    
+    result_long <- result_long %>%
+      mutate(window_seconds = as.numeric(window_seconds))
+    
+    # Fem el join per finestra (i jugador si cal)
+    result_norm <- result_long %>%
+      left_join(
+        df_hist_maximums_indv %>%
+          select(player_name, time_window, max_speed = speed),
+        by = c("player_name" = "player_name", "window_seconds" = "time_window")
+      ) %>%
+      mutate(
+        mean_speed_rel = (mean_speed / max_speed) * 100
+      )
+    
+    result_max_per_timestamp <- result_norm %>%
+      group_by(player_name, timestamp) %>%
+      summarise(
+        max_rel_speed = if (all(is.na(mean_speed_rel))) NA_real_ else max(mean_speed_rel, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    result_max_per_timestamp <- result_max_per_timestamp %>%
+      filter(!is.na(max_rel_speed))
+    
+    result_norm <- result_norm %>%
+      mutate(
+        timestamp = as.POSIXct(paste(date, timestamp), format = "%Y-%m-%d %H:%M:%OS"),
+        window_seconds = as.numeric(window_seconds)
+      )
+    
+    result_max_per_timestamp <- result_max_per_timestamp %>%
+      filter(!is.na(max_rel_speed)) %>%
+      mutate(
+        timestamp = as.POSIXct(paste(date_session, timestamp), format = "%Y-%m-%d %H:%M:%OS")
+      )
+    
+    # --- Gràfic ---
+    ggplot() +
+      # totes les mitjanes mòbils en gris
+      geom_line(
+        data = result_norm,
+        aes(
+          x = timestamp,
+          y = mean_speed_rel,
+          group = interaction(player_name, window_seconds)
+        ),
+        color = "grey40",
+        alpha = 0.2,
+        linewidth = 0.4
+      ) +
+      # línia vermella del màxim
+      geom_line(
+        data = result_max_per_timestamp,
+        aes(x = timestamp, y = max_rel_speed, group = player_name),
+        color = "red",
+        linewidth = 1
+      ) +
+      labs(
+        title = "Evolução das médias móveis normalizadas e valor máximo por instante",
+        x = "Tempo",
+        y = "Velocidade média normalizada (%)"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", hjust = 0.5)
+      )
+    
+  })
+  
 }
 
 shinyApp(ui = ui, server = server)
