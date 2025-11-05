@@ -18,6 +18,12 @@ library(purrr)
 library(viridis)
 library(stringr)
 library(RcppRoll)
+library(tibble)
+library(stringr)
+library(scales)
+library(hrbrthemes)
+library(patchwork)
+library(RcppRoll)
 
 load("output/database_maximums_var.Rdata")
 df_final_maximums$date <- as.Date(df_final_maximums$date)
@@ -94,7 +100,7 @@ ui <- fluidPage(
         ),
         nav_panel("Session analysis",
                   div(style = "text-align:center;",
-                      plotOutput("plot_session", width = "100%"),
+                      plotOutput("plot_session", height = "100vh", width = "100%"),
                       br())
         )
       )
@@ -223,6 +229,16 @@ server <- function(input, output, session) {
     
   })
   
+  zones_tbl <- tibble::tibble(
+    xmin = c(1, 7, 9, 21, 60, 481),
+    xmax = c(6.999, 8.999, 20.999, 60.999, 480.999, 7200.999),
+    zone = c("AnaAla-P", "AnaAla-C", "AnaLa-P", "AnaLa-C", "VO2max-P", "Aerobic-C"),
+    fill_color = c("#FF9999", "#FFCCCC", "#FFCC66", "#FFEE99", "#99CCFF", "#66AAFF")
+  ) %>%
+    arrange(xmin) %>%
+    mutate(zone = factor(zone, levels = zone))
+  
+  
   output$plot <- renderPlot({
     
     max_date <- max(df_final_maximums$date)
@@ -254,40 +270,6 @@ server <- function(input, output, session) {
       pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
       mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
     
-    #--- 1. Ajustar el model hiperbòlic per jugador ---
-    df_models <- df_hist_maximums %>%
-      group_by(player_name) %>%
-      nest() %>%
-      mutate(
-        fit = map(data, ~{
-          df_valid <- drop_na(.x, speed)  # eliminar files amb NA
-          if(nrow(df_valid) < 2) return(NULL)  # si no hi ha prou dades, no ajustar
-          nls(speed ~ D_prime / time_window + CS,
-              data = df_valid,
-              start = list(D_prime = 100, CS = 5),
-              control = nls.control(maxiter = 100))
-        })
-      )
-    
-    # --- 2. Afegir prediccions del model ---
-    df_preds <- df_models %>%
-      mutate(pred = map2(data, fit, ~{
-        if(is.null(.y)) {
-          # si no hi ha model, només retornem NA
-          .x %>% mutate(speed_pred = NA_real_)
-        } else {
-          # només predim sobre les files amb valors vàlids utilitzats pel model
-          df_valid <- drop_na(.x, speed)
-          df_pred <- df_valid %>% mutate(speed_pred = predict(.y))
-          
-          # unir amb les files originals per conservar tota la informació
-          .x %>%
-            left_join(df_pred %>% select(time_window, speed_pred), by = "time_window")
-        }
-      })) %>%
-      select(player_name, pred) %>%
-      unnest(pred)
-    
     df_hist_maximums_session <- df_final_maximums %>%
       filter(MM_3 < 39) %>% #there is 14 sessions where GPS was in a car LOL
       filter(date == input$training) %>%
@@ -307,30 +289,11 @@ server <- function(input, output, session) {
     label_angle <- ifelse(width_px < 600, 60, 0)
     n_dodge_val <- ifelse(width_px < 600, 2, 1)
     
-    # Defineix les zones (temps en segons)
-    zones <- tibble::tibble(
-      xmin = c(1, 7, 9, 21, 60, 481),      # 1 s, 7 s, 9 s, 21 s, 60 s, 9 min (540 s)
-      xmax = c(6.999, 8.999, 20.999, 60.999, 480.999, 7200.999),   # 6 s, 8 s, 20 s, 60 s, 8 min (480 s), 120 min (7200 s)
-      zone = c(
-        "AnaAla-P",  # Anaerobic alactic potencia
-        "AnaAla-C",  # Anaerobic alactic capacitat
-        "AnaLa-P",  # Anaerobic lactic potencia
-        "AnaLa-C",  # Anaerobic lactic capacitat
-        "VO2max-P", # Aerobic VO2max potencia
-        "Aerobic-C" # Aerobic capacitat
-      ),
-      fill_color = c(
-        "#FF9999", "#FFCCCC", "#FFCC66", "#FFEE99", "#99CCFF", "#66AAFF"
-      )
-    ) %>%
-      arrange(xmin) %>%                       # ordena segons xmin
-      mutate(zone = factor(zone, levels = zone))  # converteix a factor ordenat
-    
     # Al renderPlot(), abans dels geom_line(), afegeix les zones:
-    ggplot(df_preds, aes(x = time_window, y = speed)) +
+    ggplot(df_hist_maximums, aes(x = time_window, y = speed)) +
       # Zones de fons
       geom_rect(
-        data = zones,
+        data = zones_tbl,
         aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, fill = zone),
         inherit.aes = FALSE,
         alpha = 0.2
@@ -348,7 +311,7 @@ server <- function(input, output, session) {
         }
       ) +
       # Escala de colors per les zones
-      scale_fill_manual(values = setNames(zones$fill_color, zones$zone)) +
+      scale_fill_manual(values = setNames(zones_tbl$fill_color, zones_tbl$zone)) +
       theme_ipsum() +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
@@ -436,7 +399,7 @@ server <- function(input, output, session) {
     name <- input$file1$name
     file1 <- readRDS(input$file1$datapath)
     
-    # --- Extraiem la data del path ---
+    # --- Extreiem la data del nom ---
     data <- sub("^([0-9]{4}-[0-9]{2}-[0-9]{2}).*$", "\\1", name)
     date_session <- as.Date(data)
     
@@ -447,38 +410,37 @@ server <- function(input, output, session) {
     
     if (nrow(file1) < 10) return(NULL)
     
-    # --- Definim les finestres (en segons) ---
+    # --- Finestres (en segons) ---
     window_seconds <- c(
-      seq(1, 120, by = 4),     # cada 4s fins 2 min
-      seq(125, 600, by = 60),  # cada 30s fins 10 min
-      seq(630, 900, by = 120)  # cada 1min fins 1h
+      seq(1, 120, by = 2),
+      seq(125, 600, by = 10),
+      seq(630, 900, by = 60)
     )
     
-    # --- Vector i suma acumulada ---
+    # --- Rolling means ---
     v <- file1$speed_kmh
-    S <- c(0, cumsum(v))
     n <- length(v)
     
-    # --- Calculem TOTS els valors per a cada finestra ---
     all_windows <- lapply(window_seconds, function(w) {
       win <- w * 20
       if (win >= n) return(NULL)
       
       means <- RcppRoll::roll_mean(v, n = win, align = "right")
+      if (length(means) < length(file1$time)) {
+        means <- c(rep(NA, length(file1$time) - length(means)), means)
+      }
       
       tibble(
         window_seconds = w,
-        timestamp = file1$time[win:n],
-        mean_speed = means[win:n]
+        timestamp = file1$time,
+        mean_speed = means
       )
     })
     
-    # --- Combina totes les finestres en una sola taula ---
     result_long <- bind_rows(all_windows)
     
     player_name_file <- if ("player_name" %in% names(file1)) file1$player_name[1] else NA
     
-    # --- Afegim informació addicional ---
     result_long <- result_long %>%
       mutate(
         date = date_session,
@@ -486,6 +448,7 @@ server <- function(input, output, session) {
       ) %>%
       select(date, player_name, window_seconds, timestamp, mean_speed)
     
+    # --- Històric ---
     max_date <- max(df_final_maximums$date)
     min_date <- min(df_final_maximums$date)
     
@@ -499,73 +462,61 @@ server <- function(input, output, session) {
     )
     
     df_hist_maximums_indv <- df_final_maximums %>%
-      filter(MM_3 < 39) %>% #there is 14 sessions where GPS was in a car LOL
+      filter(MM_3 < 39) %>%  # exclou sessions amb GPS al cotxe
       filter(date >= selected_range[[1]] & date <= selected_range[[2]]) %>%
-      filter(player_name == player_name_file)
-    
-    df_hist_maximums_indv <- df_hist_maximums_indv %>%
+      filter(player_name == player_name_file) %>%
       group_by(player_name) %>%
-      summarise(across(starts_with("MM_"), ~{
-        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
-      }))  %>%
-      pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
-      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
-    
-    # Assegurem que les finestres tinguin el mateix nom
-    df_hist_maximums_indv <- df_hist_maximums_indv %>%
-      mutate(time_window = as.numeric(time_window))
-    
-    result_long <- result_long %>%
-      mutate(window_seconds = as.numeric(window_seconds))
-    
-    # Fem el join per finestra (i jugador si cal)
-    result_norm <- result_long %>%
-      left_join(
-        df_hist_maximums_indv %>%
-          select(player_name, time_window, max_speed = speed),
-        by = c("player_name" = "player_name", "window_seconds" = "time_window")
+      summarise(
+        across(
+          starts_with("MM_"),
+          function(x) {
+            if (all(is.na(x))) {
+              NA_real_
+            } else {
+              max(x, na.rm = TRUE)
+            }
+          }
+        ),
+        .groups = "drop"
+      ) %>%
+      pivot_longer(
+        cols = !player_name,
+        names_to = "code_window",
+        values_to = "speed"
       ) %>%
       mutate(
-        mean_speed_rel = (mean_speed / max_speed) * 100
+        time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+"))
       )
     
+    # --- Normalització respecte màxim històric ---
+    result_norm <- result_long %>%
+      left_join(
+        df_hist_maximums_indv %>% select(player_name, time_window, max_speed = speed),
+        by = c("player_name" = "player_name", "window_seconds" = "time_window")
+      ) %>%
+      mutate(mean_speed_rel = (mean_speed / max_speed) * 100)
+    
+    # --- Màxim per timestamp ---
     result_max_per_timestamp <- result_norm %>%
       group_by(player_name, timestamp) %>%
       summarise(
         max_rel_speed = if (all(is.na(mean_speed_rel))) NA_real_ else max(mean_speed_rel, na.rm = TRUE),
         .groups = "drop"
-      )
-    
-    result_max_per_timestamp <- result_max_per_timestamp %>%
-      filter(!is.na(max_rel_speed))
-    
-    result_norm <- result_norm %>%
-      mutate(
-        timestamp = as.POSIXct(paste(date, timestamp), format = "%Y-%m-%d %H:%M:%OS"),
-        window_seconds = as.numeric(window_seconds)
-      )
-    
-    result_max_per_timestamp <- result_max_per_timestamp %>%
+      ) %>%
       filter(!is.na(max_rel_speed)) %>%
-      mutate(
-        timestamp = as.POSIXct(paste(date_session, timestamp), format = "%Y-%m-%d %H:%M:%OS")
-      )
+      mutate(timestamp = as.POSIXct(paste(date_session, timestamp), format = "%Y-%m-%d %H:%M:%OS"))
     
-    # --- Gràfic ---
-    ggplot() +
-      # totes les mitjanes mòbils en gris
+    # --- GRÀFIC 1: evolució temporal ---
+    plot_evolucio <- ggplot() +
       geom_line(
         data = result_norm,
-        aes(
-          x = timestamp,
-          y = mean_speed_rel,
-          group = interaction(player_name, window_seconds)
-        ),
+        aes(x = as.POSIXct(paste(date_session, timestamp), format = "%Y-%m-%d %H:%M:%OS"),
+            y = mean_speed_rel,
+            group = interaction(player_name, window_seconds)),
         color = "grey40",
         alpha = 0.2,
         linewidth = 0.4
       ) +
-      # línia vermella del màxim
       geom_line(
         data = result_max_per_timestamp,
         aes(x = timestamp, y = max_rel_speed, group = player_name),
@@ -583,7 +534,98 @@ server <- function(input, output, session) {
         plot.title = element_text(face = "bold", hjust = 0.5)
       )
     
+    # --- GRÀFIC 2: línia històrica + sessió amb gruix variable ---
+    
+    # 1️⃣ Dades històriques (ja les tens en df_hist_maximums)
+    df_hist_maximums <- df_final_maximums %>%
+      filter(MM_3 < 39) %>% #there is 14 sessions where GPS was in a car LOL
+      filter(date >= selected_range[[1]] & date <= selected_range[[2]]) %>%
+      filter(player_name == player_name_file)
+    
+    validate(
+      need(nrow(df_hist_maximums) > 0, "No data for the selected time window")
+    )
+    
+    df_hist_maximums <- df_hist_maximums %>%
+      group_by(player_name) %>%
+      summarise(across(starts_with("MM_"), ~{
+        if(all(is.na(.x))) NA else max(.x, na.rm = TRUE)
+      }))  %>%
+      pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
+    # 2️⃣ Màxims per finestra i % temps > 80% del màxim de la sessió
+    df_session_windows <- result_norm %>%
+      group_by(player_name, window_seconds) %>%
+      summarise(
+        max_speed_window_session = if (all(is.na(mean_speed))) NA_real_ else max(mean_speed, na.rm = TRUE),
+        prop_time_over_80 = mean(mean_speed > 0.7 * max(mean_speed, na.rm = TRUE), na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(linewidth_scaled = scales::rescale(prop_time_over_80, to = c(1, 5)))
+    
+    df_session_ribbon <- df_session_windows %>%
+      mutate(
+        ymin = max_speed_window_session - linewidth_scaled / 2,
+        ymax = max_speed_window_session + linewidth_scaled / 2
+      )
+ 
+    
+    # 3️⃣ Gràfic
+    plot_zones_session <- ggplot() +
+      # Zones de fons
+      geom_rect(
+        data = zones_tbl,
+        aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, fill = zone),
+        inherit.aes = FALSE,
+        alpha = 0.2
+      ) +
+      # Línia històrica
+      geom_line(
+        data = df_hist_maximums,
+        aes(x = time_window, y = speed),
+        color = "grey10",
+        linewidth = 1
+      ) +
+      geom_ribbon(
+        data = df_session_ribbon,
+        aes(x = window_seconds, ymin = ymin, ymax = ymax),
+        fill = "grey",
+        alpha = 0.5
+      ) +
+      geom_line(
+        data = df_session_windows,
+        aes(x = window_seconds, y = max_speed_window_session),
+        color = "grey40",
+        linewidth = 1
+      ) +
+      scale_x_log10(
+        breaks = c(1, 10, 30, 60, 120, 300, 600, 1200, 3600),
+        labels = function(x) {
+          sapply(x, function(val) {
+            if (val < 60) paste0(val, " s") else paste0(round(val / 60, 1), " min")
+          })
+        }
+      ) +
+      scale_fill_manual(values = setNames(zones_tbl$fill_color, zones_tbl$zone)) +
+      scale_linewidth(range = c(0.5, 3), guide = "none") +
+      guides(fill = "none") +
+      theme_ipsum() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        panel.grid.minor = element_blank(),
+        legend.position = "none"
+      ) +
+      labs(
+        title = "Velocidade máxima por janela: histórico vs sessão atual",
+        x = "Tempo (segundos/minutos)",
+        y = "Velocidade (km/h)"
+      )
+    
+    # --- COMBINA ELS DOS GRÀFICS ---
+    plot_evolucio / plot_zones_session + plot_layout(heights = c(2, 1))
   })
+  
   
 }
 
