@@ -412,9 +412,9 @@ server <- function(input, output, session) {
     
     # --- Finestres (en segons) ---
     window_seconds <- c(
-      seq(1, 120, by = 2),
-      seq(125, 600, by = 10),
-      seq(630, 900, by = 60)
+      seq(1, 120, by = 3),
+      seq(125, 600, by = 30),
+      seq(630, 900, by = 240)
     )
     
     # --- Rolling means ---
@@ -524,9 +524,9 @@ server <- function(input, output, session) {
         linewidth = 1
       ) +
       labs(
-        title = "Evolução das médias móveis normalizadas e valor máximo por instante",
-        x = "Tempo",
-        y = "Velocidade média normalizada (%)"
+        title = "Evolution of the normalized mobile means and it's maximum value for each instant",
+        x = "Time",
+        y = "Normalized mean speed (%)"
       ) +
       theme_minimal(base_size = 13) +
       theme(
@@ -554,15 +554,25 @@ server <- function(input, output, session) {
       pivot_longer(!player_name, names_to = "code_window", values_to = "speed") %>%
       mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
     
-    # 2️⃣ Màxims per finestra i % temps > 80% del màxim de la sessió
     df_session_windows <- result_norm %>%
       group_by(player_name, window_seconds) %>%
       summarise(
         max_speed_window_session = if (all(is.na(mean_speed))) NA_real_ else max(mean_speed, na.rm = TRUE),
-        prop_time_over_80 = mean(mean_speed > 0.7 * max(mean_speed, na.rm = TRUE), na.rm = TRUE),
+        
+        n_episodes_over_80 = {
+          if (all(is.na(mean_speed))) {
+            NA_integer_
+          } else {
+            threshold <- 0.7 * max(mean_speed, na.rm = TRUE)
+            above <- mean_speed > threshold
+            # Comptem només les transicions de FALSE → TRUE
+            sum(c(FALSE, diff(as.integer(above)) == 1), na.rm = TRUE)
+          }
+        },
+        
         .groups = "drop"
       ) %>%
-      mutate(linewidth_scaled = scales::rescale(prop_time_over_80, to = c(1, 5)))
+      mutate(linewidth_scaled = scales::rescale(n_episodes_over_80, to = c(1, 8)))
     
     df_session_ribbon <- df_session_windows %>%
       mutate(
@@ -608,19 +618,30 @@ server <- function(input, output, session) {
         }
       ) +
       scale_fill_manual(values = setNames(zones_tbl$fill_color, zones_tbl$zone)) +
-      scale_linewidth(range = c(0.5, 3), guide = "none") +
-      guides(fill = "none") +
+      scale_linewidth_continuous(
+        name = "Nº de episodios > 70% del máximo",
+        range = c(0.5, 5)
+      ) +
+      #guides(fill = "none") +
       theme_ipsum() +
       theme(
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         panel.grid.minor = element_blank(),
-        legend.position = "none"
-      ) +
+        legend.position = "none") +
       labs(
-        title = "Velocidade máxima por janela: histórico vs sessão atual",
-        x = "Tempo (segundos/minutos)",
-        y = "Velocidade (km/h)"
-      )
+        title = "Maximum speed for each time window: historical data vs. atcual session",
+        x = "Time (seconds/minutes)",
+        y = "Speed (km/h)"
+      ) +
+      # llegenda manual per al gruix de la línia
+      annotate("rect",
+               xmin = 5, xmax = 20,
+               ymin = 2, ymax = 4,
+               fill = "grey", alpha = 0.5) +
+      annotate("text",
+               x = 25, y = 3,
+               label = "Line width = number of high intensity episodes (>70% session max) in the session",
+               hjust = 0, size = 4, color = "grey20")
     
     # --- COMBINA ELS DOS GRÀFICS ---
     plot_evolucio / plot_zones_session + plot_layout(heights = c(2, 1))
