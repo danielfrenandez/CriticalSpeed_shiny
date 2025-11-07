@@ -161,11 +161,10 @@ server <- function(input, output, session) {
     
     # finestres (segons)
     window_seconds <- c(
-      seq(1, 120, by = 3),
-      30, 60, 120, 300, 600,
+      seq(1, 120, by = 2),
+      10, 30, 60, 120, 300, 600,
       seq(125, 600, by = 60),
-      seq(630, 900, by = 240),
-      1200
+      seq(630, 720, by = 240)
     )
     
     v <- file1$speed_kmh
@@ -527,8 +526,8 @@ server <- function(input, output, session) {
     
     df_session_ribbon <- df_session_windows %>%
       mutate(
-        ymin = max_speed_window_session - linewidth_scaled / 2,
-        ymax = max_speed_window_session + linewidth_scaled / 2
+        ymin = max_speed_window_session - linewidth_scaled / 1.5,
+        ymax = max_speed_window_session
       )
     
     plot_zones_session <- ggplot() +
@@ -576,11 +575,11 @@ server <- function(input, output, session) {
         y = "Speed (km/h)"
       ) +
       annotate("rect",
-               xmin = 5, xmax = 20,
-               ymin = 2, ymax = 4,
+               xmin = 88, xmax = 115,
+               ymin = 24, ymax = 26,
                fill = "grey", alpha = 0.5) +
       annotate("text",
-               x = 25, y = 3,
+               x = 130, y = 25,
                label = "Line width = number of high intensity episodes (>70% session max) in the session",
                hjust = 0, size = 4, color = "grey20")
     
@@ -627,11 +626,42 @@ server <- function(input, output, session) {
       summarise(session_speed = if(all(is.na(mean_speed))) NA_real_ else max(mean_speed, na.rm = TRUE), .groups = "drop") %>%
       rename(time_window = window_seconds)
     
+    # ---- Normalització respecte màxim històric ----
+    result_norm <- result_long %>%
+      left_join(
+        df_hist_maximums_indv %>% select(player_name, time_window, max_speed = speed),
+        by = c("player_name" = "player_name", "window_seconds" = "time_window")
+      ) %>%
+      mutate(mean_speed_rel = (mean_speed / max_speed) * 100)
+    
+    
+    df_session_windows <- result_norm %>%
+      group_by(player_name, window_seconds) %>%
+      summarise(
+        max_speed_window_session = if (all(is.na(mean_speed))) NA_real_ else max(mean_speed, na.rm = TRUE),
+        n_episodes_over_80 = {
+          if (all(is.na(mean_speed))) {
+            NA_integer_
+          } else {
+            threshold <- 0.7 * max(mean_speed, na.rm = TRUE)
+            above <- mean_speed > threshold
+            sum(c(FALSE, diff(as.integer(above)) == 1), na.rm = TRUE)
+          }
+        },
+        .groups = "drop"
+      )
+    
     # Combina i calcula %
     df_compare <- df_hist_maximums %>%
       left_join(df_session, by = c("player_name", "time_window")) %>%
       mutate(percent_of_max = round((session_speed / max_speed) * 100, 1)) %>%
       select(time_window, session_speed, max_speed, percent_of_max)
+    
+    df_compare <- df_compare %>%
+      left_join(
+        df_session_windows %>% select(window_seconds, n_episodes_over_80),
+        by = c("time_window" = "window_seconds")
+      )
     
     desired_windows <- c(1, 10, 30, 60, 120, 300, 600, 1200, 3600)
     df_compare <- df_compare %>% filter(time_window %in% desired_windows)
@@ -639,15 +669,18 @@ server <- function(input, output, session) {
     df_compare %>%
       arrange(time_window) %>%
       mutate(
-        time_window = ifelse(time_window < 60,
-                             paste0(time_window, " s"),
-                             paste0(round(time_window / 60, 1), " min"))
+        time_window = ifelse(
+          time_window < 60,
+          paste0(time_window, " s"),
+          paste0(round(time_window / 60, 1), " min")
+        )
       ) %>%
       rename(
         "Time window" = time_window,
         "Session speed (km/h)" = session_speed,
         "Max (filtered range, km/h)" = max_speed,
-        "% of max" = percent_of_max
+        "% of max" = percent_of_max,
+        "Repetitions (>70%)" = n_episodes_over_80
       )
   })
 }
