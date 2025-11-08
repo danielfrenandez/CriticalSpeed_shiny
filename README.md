@@ -67,3 +67,52 @@ Performs a detailed **individual moving-window analysis** on the speed variable 
 ### `df_historic_ind_max()`
 
 Utility function that allows filtering and extracting **historical maximum values** for each player within a user-defined time range of the season.
+
+## App Overview
+
+### `app.R`
+
+This file contains the code for a **Shiny App** designed to visualize and analyze all the data.\
+The app includes **three main tabs** for exploring and comparing players’ top speed performances:
+
+### 1. **MIPs vs. Team**
+
+Compares a player’s metrics with the rest of the team to identify her relative position within the group.
+
+-   Allows filtering by date range to analyze specific periods of the season.
+
+    ![](images/clipboard-1436386059.png)
+
+### 2. **MIPs vs. Session**
+
+Compares each player’s **season-long individual records** with those from a **specific training session**.
+
+-   Helps visualize how close or far a player was from her best performances during a given session.
+
+-    Includes filters to select the desired time range within the season.
+
+-   Also provides a **summary data table** with key metrics.
+
+    ![](images/clipboard-1841385245.png)
+
+### 3. **Session Analysis**
+
+> ⚠️ Currently, this feature only works when running the app **locally** (it is not functional on the hosted shinyapps.io version).
+
+This tab allows you to:
+
+-   Upload a session file in **RDS format**.
+
+-    Automatically analyze multiple time windows within the uploaded session.
+
+-   Assess:
+
+    -   The structure and intensity of the training session.
+
+    -   How close the player’s efforts were to her historical maximums.
+
+    -   The number of repetitions performed within each time window.
+
+>  The analysis typically takes around **30–40 seconds** to complete due to the heavy computational processing involved.
+
+![![](images/clipboard-975668534.png)](images/clipboard-773878828.png)

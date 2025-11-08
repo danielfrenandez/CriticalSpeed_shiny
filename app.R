@@ -626,6 +626,22 @@ server <- function(input, output, session) {
       summarise(session_speed = if(all(is.na(mean_speed))) NA_real_ else max(mean_speed, na.rm = TRUE), .groups = "drop") %>%
       rename(time_window = window_seconds)
     
+    df_hist_maximums_indv <- df_final_maximums %>%
+      filter(MM_3 < 39,
+             date >= selected_range[[1]],
+             date <= selected_range[[2]],
+             player_name == player_name_file) %>%
+      group_by(player_name) %>%
+      summarise(
+        across(
+          starts_with("MM_"),
+          ~ if(all(is.na(.x))) NA_real_ else max(.x, na.rm = TRUE)
+        ),
+        .groups = "drop"
+      ) %>%
+      pivot_longer(cols = !player_name, names_to = "code_window", values_to = "speed") %>%
+      mutate(time_window = as.numeric(str_extract(code_window, "(?<=MM_)\\d+")))
+    
     # ---- Normalització respecte màxim històric ----
     result_norm <- result_long %>%
       left_join(
