@@ -2,10 +2,61 @@
 
 This repository contains a collection of R functions for processing and preparing **raw data** from **two seasons of women’s football (Soccermon)**. It also includes a **Shiny App** that enables interactive exploration of both seasons, focusing on the concepts of **maximum-demand scenarios** and **critical speed**.
 
-You can access a live example of the Shiny App at the following link: **[HERE]**\
+You can access a live example of the Shiny App at the following link: [**[HERE]**](https://danifrenandez.shinyapps.io/CriticalSpeed_shiny/)\
 *(Note: The last tab of the app is currently non-functional in the online version.)*
 
-## Functions Overview
+## A. Installation and Usage
+
+### 1. **Clone the repository**
+
+```         
+git clone https://github.com/danielfrenandez/CriticalSpeed_shiny.git cd CriticalSpeed_shiny 
+```
+
+### 2. **Install required packages**
+
+Make sure you have **R** (version ≥ 4.2.0) and **RStudio** installed.\
+Then, install the necessary packages by running the following commands in R:
+
+```         
+install.packages(c(   "shiny",   "tidyverse",   "data.table",   "DT",   "ggplot2",   "readr",   "dplyr",   "purrr",   "stringr" )) 
+```
+
+If additional packages are used in your scripts, list them in a `requirements.R` file or include them above.
+
+### 3. **Run the Shiny App locally**
+
+Once all dependencies are installed, you can launch the app by running:
+
+```         
+shiny::runApp("app.R") 
+```
+
+or simply open `app.R` in **RStudio** and click **Run App**.
+
+> **Notes:**
+>
+> -   Some features (like *Session Analysis*) only work when running the app **locally**.
+>
+> -   The app may take several seconds to load due to the size and complexity of the datasets.
+
+### 4. **Data Setup (Optional)**
+
+If you need to prepare the raw data before using the app, you can run the following functions included in the repository:
+
+```         
+download2020data() load_data() create_database_fast() 
+```
+
+These functions will:
+
+-   Download and store all raw data files.
+
+-   Convert them from `.parquet` to `.RDS` format.
+
+-   Build a summarized database used by the app for analysis.
+
+## B. Functions Overview
 
 ### `download2020data()`
 
@@ -68,7 +119,7 @@ Performs a detailed **individual moving-window analysis** on the speed variable 
 
 Utility function that allows filtering and extracting **historical maximum values** for each player within a user-defined time range of the season.
 
-## App Overview
+## C. App Overview
 
 ### `app.R`
 
