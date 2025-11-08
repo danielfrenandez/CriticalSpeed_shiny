@@ -515,7 +515,7 @@ server <- function(input, output, session) {
           if (all(is.na(mean_speed))) {
             NA_integer_
           } else {
-            threshold <- 0.7 * max(mean_speed, na.rm = TRUE)
+            threshold <- 0.9 * max(mean_speed, na.rm = TRUE)
             above <- mean_speed > threshold
             sum(c(FALSE, diff(as.integer(above)) == 1), na.rm = TRUE)
           }
@@ -580,7 +580,7 @@ server <- function(input, output, session) {
                fill = "grey", alpha = 0.5) +
       annotate("text",
                x = 130, y = 25,
-               label = "Line width = number of high intensity episodes (>70% session max) in the session",
+               label = "Line width = number of high intensity episodes (>90% session max) in the session",
                hjust = 0, size = 4, color = "grey20")
     
     plot_evolucio / plot_zones_session + plot_layout(heights = c(2, 1))
@@ -643,7 +643,7 @@ server <- function(input, output, session) {
           if (all(is.na(mean_speed))) {
             NA_integer_
           } else {
-            threshold <- 0.7 * max(mean_speed, na.rm = TRUE)
+            threshold <- 0.9 * max(mean_speed, na.rm = TRUE)
             above <- mean_speed > threshold
             sum(c(FALSE, diff(as.integer(above)) == 1), na.rm = TRUE)
           }
@@ -680,7 +680,7 @@ server <- function(input, output, session) {
         "Session speed (km/h)" = session_speed,
         "Max (filtered range, km/h)" = max_speed,
         "% of max" = percent_of_max,
-        "Repetitions (>70%)" = n_episodes_over_80
+        "Repetitions (>90%)" = n_episodes_over_80
       )
   })
 }
