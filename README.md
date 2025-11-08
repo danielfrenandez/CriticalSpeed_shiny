@@ -11,8 +11,6 @@ You can access a live example of the Shiny App at the following link: **[HERE]**
 
 Downloads the raw data from the **Zenodo online repository** and stores all files in a local folder.
 
-> 
->
 > **Note:** This process can take a long time due to the large file sizes. Ensure sufficient local storage before running the function.\
 > These data include numerous raw files from multiple training sessions across two full seasons.
 
@@ -20,9 +18,9 @@ Downloads the raw data from the **Zenodo online repository** and stores all file
 
 Converts the stored files from **PARQUET** format to **RDS**, significantly reducing storage size.
 
--    Only needs to be executed **once**.
+-   Only needs to be executed **once**.
 
--    Takes time to complete, as it processes a large number of files.
+-   Takes time to complete, as it processes a large number of files.
 
 ### `create_database_fast()`
 
@@ -30,21 +28,23 @@ Main function to build a **summary database** that aggregates all training sessi
 
 -   Minimum runtime: approximately **1 hour**, depending on system performance.
 
--    Generates one summarized entry per session and player, containing:
+-   Generates one summarized entry per session and player, containing:
 
-    -   Session duration
+```         
+-   Session duration
 
-    -   Total distance
+-   Total distance
 
-    -   Distance \> 21 km/h
+-   Distance \> 21 km/h
 
-    -   Number of sprints \> 21 km/h
+-   Number of sprints \> 21 km/h
 
-    -   PlayerLoad
+-   PlayerLoad
 
-    -   Mean heart rate
+-   Mean heart rate
 
-    -   Maximum heart rate
+-   Maximum heart rate
+```
 
 ### `moving_averages_fast()`
 
@@ -89,7 +89,7 @@ Compares each player’s **season-long individual records** with those from a **
 
 -   Helps visualize how close or far a player was from her best performances during a given session.
 
--    Includes filters to select the desired time range within the season.
+-   Includes filters to select the desired time range within the season.
 
 -   Also provides a **summary data table** with key metrics.
 
@@ -103,7 +103,7 @@ This tab allows you to:
 
 -   Upload a session file in **RDS format**.
 
--    Automatically analyze multiple time windows within the uploaded session.
+-   Automatically analyze multiple time windows within the uploaded session.
 
 -   Assess:
 
@@ -113,6 +113,8 @@ This tab allows you to:
 
     -   The number of repetitions performed within each time window.
 
->  The analysis typically takes around **30–40 seconds** to complete due to the heavy computational processing involved.
+> The analysis typically takes around **30–40 seconds** to complete due to the heavy computational processing involved.
 
-![![](images/clipboard-975668534.png)](images/clipboard-773878828.png)
+![](images/clipboard-773878828.png)
+
+![](images/clipboard-975668534.png)
