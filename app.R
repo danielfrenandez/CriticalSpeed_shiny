@@ -53,10 +53,13 @@ ui <- fluidPage(
           value = c(min(df_final_maximums$date), max(df_final_maximums$date))
         )
       ),
-      selectInput( 
-        "athlete", 
-        "Select Athlete:", 
-        choices = unique(df_final_maximums$player_name)
+      conditionalPanel(
+        condition = "input.tabs_main != 'Session analysis'",
+        selectInput( 
+          "athlete", 
+          "Select Athlete:", 
+          choices = unique(df_final_maximums$player_name)
+        )
       ),
       conditionalPanel(
         condition = "input.tabs_main == 'MIPs vs. session'",
